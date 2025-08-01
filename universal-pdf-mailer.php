@@ -5,10 +5,6 @@
  * Version: 1.0
  * Author: Talha Ahmad
  */
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 if (!defined('ABSPATH')) exit;
 
 require_once plugin_dir_path(__FILE__) . 'includes/form-detectors.php';
@@ -30,6 +26,7 @@ class UniversalPDFMailer {
             plugin VARCHAR(50),
             form_id VARCHAR(50),
             content LONGTEXT,
+            css LONGTEXT,
             admin_emails TEXT,
             applicant_mode ENUM('auto','manual') DEFAULT 'auto',
             manual_fields TEXT,
@@ -67,11 +64,16 @@ add_action('admin_post_updf_send_test', function() {
 
     if (!$template) wp_die('Template not found.');
 
-    // Mock data for placeholders
+    // More complete sample data
     $sample_data = [
-        'Name'  => 'John Doe',
-        'Email' => 'john@example.com',
-        'Phone' => '123-456-7890'
+        'Name'          => 'John Doe',
+        'Email'         => 'john@example.com',
+        'Phone'         => '123-456-7890',
+        'Address'       => '123 Main St',
+        'signature'     => 'https://example.com/signature.png',
+        'current_date'  => date('Y-m-d'),
+        'current_time'  => date('H:i:s'),
+        'site_name'     => get_bloginfo('name')
     ];
 
     require_once plugin_dir_path(__FILE__) . 'includes/pdf-generator.php';

@@ -26,6 +26,7 @@ function updf_render_templates_manager() {
             'plugin'            => sanitize_text_field( $_POST['plugin'] ),
             'form_id'           => sanitize_text_field( $_POST['form_id'] ),
             'content'           => wp_kses_post( $_POST['content'] ),
+            'css'               => wp_strip_all_tags($_POST['css'] ?? ''),
             'admin_emails'      => sanitize_text_field( $_POST['admin_emails'] ),
             'admin_subject'     => sanitize_text_field( $_POST['admin_subject'] ),
             'admin_body'        => wp_kses_post( $_POST['admin_body'] ),
@@ -41,6 +42,10 @@ function updf_render_templates_manager() {
         } else {
             $wpdb->insert( $table, $data );
             $id = $wpdb->insert_id;
+
+            // Redirect to edit screen for this template to avoid duplicates
+            wp_redirect( admin_url( 'admin.php?page=updf_templates&action=edit&id=' . $id ) );
+            exit;
         }
 
         echo '<div class="updated"><p>Template saved successfully.</p></div>';
@@ -115,20 +120,35 @@ function updf_render_templates_manager() {
                     </tr>
                 </table>
 
-                <h2>Template Builder</h2>
-
-                <!-- 1) Top toolbar -->
-                <div class="panel panel__top"></div>
-                <!-- 2) Basic actions -->
-                <div class="panel panel__basic-actions"></div>
-                <!-- 3) GrapesJS canvas -->
-                <div id="gjs" style="border:1px solid #ccc; height:600px;">
-                    <?php echo $template->content ?? '<h1>Drag & Drop Elements Here</h1>'; ?>
-                </div>
-                <textarea id="gjs-html" name="content" style="display:none;"></textarea>
+                <h2>Template Content</h2>
+                
+                <?php
+                // Setup WP Editor for template content
+                $content = $template->content ?? '';
+                $editor_id = 'updf_template_content';
+                $settings = array(
+                    'textarea_name' => 'content',
+                    'textarea_rows' => 15,
+                    'media_buttons' => true,
+                    'tinymce' => array(
+                        'wpautop' => false, // Prevent auto paragraphing
+                        'toolbar1' => 'formatselect,bold,italic,bullist,numlist,blockquote,alignleft,aligncenter,alignright,link,unlink,wp_adv',
+                        'toolbar2' => 'strikethrough,hr,forecolor,pastetext,removeformat,charmap,outdent,indent,undo,redo,wp_help',
+                    ),
+                );
+                wp_editor( $content, $editor_id, $settings );
+                ?>
+                
+                <h3>Custom CSS</h3>
+                <textarea name="css" rows="10" class="large-text" placeholder="Enter custom CSS here"><?php echo esc_textarea( $template->css ?? '' ); ?></textarea>
 
                 <h3>Available Placeholders</h3>
-                <div id="placeholder-panel" style="margin-bottom:10px;"></div>
+                <div id="placeholder-panel" style="margin-bottom:10px;">
+                    <button type="button" class="button insert-placeholder" data-placeholder="[current_date]">Current Date</button>
+                    <button type="button" class="button insert-placeholder" data-placeholder="[current_time]">Current Time</button>
+                    <button type="button" class="button insert-placeholder" data-placeholder="[site_name]">Site Name</button>
+                    <!-- Dynamic placeholders will be added here -->
+                </div>
 
                 <p>
                     <label>Insert Placeholder:</label>
@@ -146,86 +166,45 @@ function updf_render_templates_manager() {
             </form>
         </div>
 
-        <style>
-            #gjs {
-                margin-top: 60px; /* enough space for your two panels */
-            }
-        </style>
-
-
-        <!-- GrapesJS & Basic Blocks CSS/JS -->
-        <script src="https://unpkg.com/grapesjs"></script>
-        <link href="https://unpkg.com/grapesjs/dist/css/grapes.min.css" rel="stylesheet"/>
-        <script src="https://unpkg.com/grapesjs-blocks-basic"></script>
-
-        <!-- Code Editor plugin -->
-        <script src="https://unpkg.com/grapesjs-plugin-code-editor"></script>
-
         <script>
-        var editor = grapesjs.init({
-            container: '#gjs',
-            height: '600px',
-            fromElement: true,
-            storageManager: false,
-            plugins: [
-                'gjs-blocks-basic',
-                'gjs-plugin-code-editor'
-            ],
-            pluginsOpts: {
-                'gjs-blocks-basic': {},
-                'gjs-plugin-code-editor': {}
+        // Function to insert placeholder at cursor position
+        function insertPlaceholder(placeholder) {
+            if (typeof tinymce !== 'undefined' && tinymce.activeEditor && !tinymce.activeEditor.isHidden()) {
+                // Insert in visual editor
+                tinymce.activeEditor.execCommand('mceInsertContent', false, placeholder);
+            } else {
+                // Insert in text editor
+                const textarea = document.getElementById('updf_template_content');
+                const cursorPos = textarea.selectionStart;
+                const text = textarea.value;
+                const newText = text.substring(0, cursorPos) + placeholder + text.substring(cursorPos);
+                textarea.value = newText;
+                
+                // Set cursor position after inserted placeholder
+                textarea.selectionStart = cursorPos + placeholder.length;
+                textarea.selectionEnd = cursorPos + placeholder.length;
             }
-            
-        });
+        }
 
-        // Heading blocks
-        ['H1','H2','H3','H4','H5','H6'].forEach(function(tag) {
-            editor.BlockManager.add('heading-' + tag.toLowerCase(), {
-                label: tag,
-                category: 'Typography',
-                attributes: { class:'gjs-block-section' },
-                content: `<${tag}>${tag} Title</${tag}>`
-            });
-        });
-
-        editor.BlockManager.add('pl-current-date', {
-            label: 'Current Date',
-            category: 'Placeholders',
-            attributes: { title: 'Insert [current_date]' },
-            content: '[current_date]'
-        });
-
-        editor.BlockManager.add('pl-current-time', {
-            label: 'Current Time',
-            category: 'Placeholders',
-            attributes: { title: 'Insert [current_time]' },
-            content: '[current_time]'
-        });
-
-        editor.BlockManager.add('pl-site-name', {
-            label: 'Site Name',
-            category: 'Placeholders',
-            attributes: { title: 'Insert [site_name]' },
-            content: '[site_name]'
-        });
-        // On save, pull HTML from the canvas
-        document.querySelector('form').addEventListener('submit', function() {
-            document.getElementById('gjs-html').value = editor.getHtml();
+        // Placeholder button insertion
+        jQuery(document).on('click', '.insert-placeholder', function() {
+            const placeholder = jQuery(this).data('placeholder');
+            insertPlaceholder(placeholder);
         });
 
         // Placeholder dropdown insertion
-        document.getElementById('placeholder-insert').addEventListener('change', function() {
-            var val = this.value;
-            if ( val ) {
-                editor.insertComponent(val);
-                this.value = '';
+        jQuery('#placeholder-insert').on('change', function() {
+            const val = jQuery(this).val();
+            if (val) {
+                insertPlaceholder(val);
+                jQuery(this).val('');
             }
         });
 
         // Dynamic placeholder fetch
         function fetchPlaceholders() {
-            var plugin  = document.querySelector('select[name="plugin"]').value;
-            var form_id = document.querySelector('input[name="form_id"]').value;
+            const plugin  = jQuery('select[name="plugin"]').val();
+            const form_id = jQuery('input[name="form_id"]').val();
             if ( ! plugin || ! form_id ) return;
 
             jQuery.post(ajaxurl, {
@@ -234,10 +213,13 @@ function updf_render_templates_manager() {
                 form_id: form_id
             }, function(response) {
                 if ( response.success ) {
-                    var panel = jQuery('#placeholder-panel').empty();
+                    const panel = jQuery('#placeholder-panel');
+                    // Clear existing dynamic placeholders
+                    panel.find('.dynamic-placeholder').remove();
+                    
                     response.data.forEach(function(field) {
                         panel.append(
-                          '<button type="button" class="button insert-placeholder" data-placeholder="['+field.key+']">'+field.label+'</button> '
+                          `<button type="button" class="button insert-placeholder dynamic-placeholder" data-placeholder="[${field.key}]">${field.label}</button> `
                         );
                     });
                 }
@@ -245,9 +227,6 @@ function updf_render_templates_manager() {
         }
 
         jQuery(document).on('change', 'select[name="plugin"], input[name="form_id"]', fetchPlaceholders);
-        jQuery(document).on('click', '.insert-placeholder', function() {
-            editor.insertComponent(jQuery(this).data('placeholder'));
-        });
         </script>
         <?php
     } else {
