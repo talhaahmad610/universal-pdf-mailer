@@ -9,6 +9,7 @@ if (!defined('ABSPATH')) exit;
 
 require_once plugin_dir_path(__FILE__) . 'includes/form-detectors.php';
 require_once plugin_dir_path(__FILE__) . 'admin/templates-manager.php';
+require_once plugin_dir_path(__FILE__) . 'admin/email-settings.php';
 
 class UniversalPDFMailer {
     public function __construct() {
@@ -50,6 +51,16 @@ class UniversalPDFMailer {
             'updf_render_templates_manager',
             'dashicons-media-document',
             25
+        );
+        
+        // Add Email Settings submenu
+        add_submenu_page(
+            'updf_templates',
+            'Email Settings',
+            'Email Settings',
+            'manage_options',
+            'updf_email_settings',
+            'updf_render_email_settings'
         );
     }
 }

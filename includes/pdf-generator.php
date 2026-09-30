@@ -216,27 +216,34 @@ function updf_generate_and_send_pdf($plugin, $form_id, $data) {
     $applicant_subject = $replace_text($template->applicant_subject ?: 'Your Submission Copy');
     $applicant_body    = $replace_text($template->applicant_body    ?: 'Please find your submission attached.');
 
-    // 11) Send emails
+    // 11) Load email sender
+    require_once dirname(__FILE__) . '/email-sender.php';
+    
+    // 12) Send emails using the email sender function
     foreach ($admin_emails as $email) {
         // Create unique file path for each email
-        $unique_pdf_path = $up['path'] . '/submission_' . time() . '_admin.pdf';
+        $unique_pdf_path = $up['path'] . '/submission_' . time() . '_admin_' . rand(1000, 9999) . '.pdf';
         file_put_contents($unique_pdf_path, $pdf_output);
         
-        wp_mail($email, $admin_subject, $admin_body, $headers, [$unique_pdf_path]);
+        updf_send_email($email, $admin_subject, $admin_body, [$unique_pdf_path], $headers);
         
         // Clean up after sending
-        unlink($unique_pdf_path);
+        if (file_exists($unique_pdf_path)) {
+            unlink($unique_pdf_path);
+        }
     }
 
     foreach ($to_applicant as $email) {
         // Create unique file path for each email
-        $unique_pdf_path = $up['path'] . '/submission_' . time() . '_applicant.pdf';
+        $unique_pdf_path = $up['path'] . '/submission_' . time() . '_applicant_' . rand(1000, 9999) . '.pdf';
         file_put_contents($unique_pdf_path, $pdf_output);
         
-        wp_mail($email, $applicant_subject, $applicant_body, $headers, [$unique_pdf_path]);
+        updf_send_email($email, $applicant_subject, $applicant_body, [$unique_pdf_path], $headers);
         
         // Clean up after sending
-        unlink($unique_pdf_path);
+        if (file_exists($unique_pdf_path)) {
+            unlink($unique_pdf_path);
+        }
     }
 
     // Remove the temporary PDF
